@@ -31,7 +31,11 @@
     <extensions defaultExtensionNs="com.intellij">
         <toolWindow canCloseContents="true"
                     icon="/icons/favicon.svg"
-                    factoryClass="com.github.yuyuanweb.mianshiyaplugin.toolWindow.MyToolWindowFactory" id="摸鱼岛">
+                    factoryClass="com.github.yuyuanweb.mianshiyaplugin.toolWindow.MyToolWindowFactory" 
+                    id="摸鱼岛"
+                    secondary="false"
+                    anchor="right"
+                    singleton="true">
         </toolWindow>
     </extensions>
 </idea-plugin>

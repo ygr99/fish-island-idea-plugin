@@ -47,7 +47,18 @@ public class HotNewsListPanel extends JBPanel<HotNewsListPanel> implements Dispo
     private final JBTabs tabs;
     private final FishChatPanel fishChatPanel;
 
-    public HotNewsListPanel(Project project) {
+    // 静态实例，用于保持状态
+    private static HotNewsListPanel INSTANCE;
+    
+    // 获取单例实例
+    public static synchronized HotNewsListPanel getInstance(Project project) {
+        if (INSTANCE == null) {
+            INSTANCE = new HotNewsListPanel(project);
+        }
+        return INSTANCE;
+    }
+    
+    private HotNewsListPanel(Project project) {
         super(new BorderLayout());
         this.project = project;
         this.hotNewsService = new HotNewsService();
@@ -67,7 +78,7 @@ public class HotNewsListPanel extends JBPanel<HotNewsListPanel> implements Dispo
         loadingDecorator = new LoadingDecorator(previewPanel, this, 0);
         mainSplitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
         contentSplitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
-        fishChatPanel = new FishChatPanel(project);
+        fishChatPanel = FishChatPanel.getInstance(project);
         tabs = new JBTabsImpl(project);
 
         // 创建标签页

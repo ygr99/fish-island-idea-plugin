@@ -571,13 +571,20 @@ public class FishChatService {
             pageSize = 50;
         }
         
+        LOG.info("开始获取历史消息，pageSize=" + pageSize);
         List<ChatMessage> messages = new ArrayList<>();
         HttpClient client = HttpClient.newHttpClient();
         
         // 构建请求体
         JsonObject requestBody = new JsonObject();
-        requestBody.addProperty("current", 1);
+        requestBody.addProperty("current", 1);  // 从第1页开始
         requestBody.addProperty("pageSize", pageSize);
+        requestBody.addProperty("roomId", -1);  // 默认房间
+        requestBody.addProperty("sortField", "createTime");
+        requestBody.addProperty("sortOrder", "desc");  // 按时间降序排序，最新的在前面
+        
+        String requestBodyStr = gson.toJson(requestBody);
+        LOG.info("请求体: " + requestBodyStr);
         
         // 发送请求
         HttpRequest request = HttpRequest.newBuilder()
@@ -589,72 +596,172 @@ public class FishChatService {
                 .header("Origin", "https://yucoder.cn")
                 .header("Referer", "https://yucoder.cn/")
                 .header("User-Agent", "YuCoder-IDEA-Plugin")
-                .POST(HttpRequest.BodyPublishers.ofString(gson.toJson(requestBody)))
+                .POST(HttpRequest.BodyPublishers.ofString(requestBodyStr))
                 .build();
                 
+        LOG.info("发送历史消息请求...");
         HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
         String responseBody = response.body();
+        LOG.info("收到历史消息响应: " + (responseBody.length() > 100 ? responseBody.substring(0, 100) + "..." : responseBody));
         
         JsonObject jsonResponse = gson.fromJson(responseBody, JsonObject.class);
         if (jsonResponse.has("code") && jsonResponse.get("code").getAsInt() == 0 && jsonResponse.has("data")) {
+            LOG.info("响应码正确，开始解析数据");
             JsonObject data = jsonResponse.getAsJsonObject("data");
             if (data.has("records") && data.get("records").isJsonArray()) {
                 JsonArray records = data.getAsJsonArray("records");
+                LOG.info("获取到 " + records.size() + " 条历史消息");
+                
                 for (JsonElement element : records) {
                     try {
                         JsonObject messageObj = element.getAsJsonObject();
+                        LOG.info("处理消息对象: " + messageObj);
                         
-                        // 创建ChatMessage对象
-                        ChatMessage chatMessage = new ChatMessage();
-                        chatMessage.setId(messageObj.get("id").getAsString());
-                        chatMessage.setContent(messageObj.get("content").getAsString());
-                        chatMessage.setTimestamp(messageObj.get("createTime").getAsString());
-                        
-                        // 创建发送者信息
-                        Sender sender = new Sender();
-                        
-                        // 解析用户信息
-                        JsonObject userObj = messageObj.getAsJsonObject("user");
-                        if (userObj != null) {
-                            sender.setId(userObj.get("id").getAsString());
-                            sender.setName(userObj.get("userName").getAsString());
-                            sender.setAvatar(userObj.get("userAvatar").getAsString());
-                            
-                            // 设置用户等级和积分
-                            if (userObj.has("level")) {
-                                sender.setLevel(userObj.get("level").getAsInt());
+                        // 检查是否有messageWrapper字段
+                        if (messageObj.has("messageWrapper") && !messageObj.get("messageWrapper").isJsonNull()) {
+                            JsonObject messageWrapper = messageObj.getAsJsonObject("messageWrapper");
+                            if (messageWrapper.has("message") && !messageWrapper.get("message").isJsonNull()) {
+                                // 使用messageWrapper中的message
+                                JsonObject actualMessage = messageWrapper.getAsJsonObject("message");
+                                
+                                // 创建ChatMessage对象
+                                ChatMessage chatMessage = new ChatMessage();
+                                chatMessage.setId(actualMessage.has("id") ? actualMessage.get("id").getAsString() : messageObj.get("id").getAsString());
+                                chatMessage.setContent(actualMessage.get("content").getAsString());
+                                chatMessage.setTimestamp(actualMessage.has("timestamp") ? actualMessage.get("timestamp").getAsString() : System.currentTimeMillis() + "");
+                                
+                                // 解析sender信息
+                                if (actualMessage.has("sender") && !actualMessage.get("sender").isJsonNull()) {
+                                    JsonObject senderObj = actualMessage.getAsJsonObject("sender");
+                                    Sender sender = new Sender();
+                                    
+                                    // 设置基本信息
+                                    sender.setId(senderObj.has("id") ? senderObj.get("id").getAsString() : "unknown");
+                                    sender.setName(senderObj.has("name") ? senderObj.get("name").getAsString() : "未知用户");
+                                    sender.setAvatar(senderObj.has("avatar") ? senderObj.get("avatar").getAsString() : "");
+                                    
+                                    // 设置等级和积分
+                                    if (senderObj.has("level")) {
+                                        sender.setLevel(senderObj.get("level").getAsInt());
+                                    }
+                                    if (senderObj.has("points")) {
+                                        sender.setPoints(senderObj.get("points").getAsInt());
+                                    }
+                                    
+                                    // 设置管理员状态
+                                    if (senderObj.has("isAdmin")) {
+                                        sender.setAdmin(senderObj.get("isAdmin").getAsBoolean());
+                                    }
+                                    
+                                    // 设置地区信息
+                                    if (senderObj.has("region")) {
+                                        sender.setRegion(senderObj.get("region").getAsString());
+                                    } else {
+                                        sender.setRegion("未知");
+                                    }
+                                    
+                                    if (senderObj.has("country")) {
+                                        sender.setCountry(senderObj.get("country").getAsString());
+                                    } else {
+                                        sender.setCountry("未知");
+                                    }
+                                    
+                                    // 设置头像框和称号
+                                    if (senderObj.has("avatarFramerUrl")) {
+                                        sender.setAvatarFramerUrl(senderObj.get("avatarFramerUrl").getAsString());
+                                    } else if (senderObj.has("avatarFrameUrl")) {
+                                        sender.setAvatarFramerUrl(senderObj.get("avatarFrameUrl").getAsString());
+                                    }
+                                    
+                                    if (senderObj.has("titleId")) {
+                                        sender.setTitleId(senderObj.get("titleId").getAsString());
+                                    }
+                                    
+                                    chatMessage.setSender(sender);
+                                    messages.add(chatMessage);
+                                    LOG.info("成功解析messageWrapper消息: " + chatMessage.getId() + " - " + chatMessage.getSender().getName() + " - " + 
+                                            (chatMessage.getContent().length() > 20 ? chatMessage.getContent().substring(0, 20) + "..." : chatMessage.getContent()));
+                                }
                             }
-                            if (userObj.has("points")) {
-                                sender.setPoints(userObj.get("points").getAsInt());
+                        } else {
+                            // 尝试直接解析旧格式的消息
+                            // 创建ChatMessage对象
+                            ChatMessage chatMessage = new ChatMessage();
+                            chatMessage.setId(messageObj.get("id").getAsString());
+                            
+                            if (messageObj.has("content")) {
+                                chatMessage.setContent(messageObj.get("content").getAsString());
+                            } else {
+                                LOG.warn("消息没有content字段，跳过");
+                                continue;
                             }
                             
-                            // 设置用户角色
-                            if (userObj.has("userRole")) {
-                                sender.setAdmin("admin".equals(userObj.get("userRole").getAsString()));
+                            if (messageObj.has("createTime")) {
+                                chatMessage.setTimestamp(messageObj.get("createTime").getAsString());
+                            } else {
+                                chatMessage.setTimestamp(System.currentTimeMillis() + "");
                             }
                             
-                            // 设置用户地区
-                            sender.setRegion(messageObj.has("region") ? messageObj.get("region").getAsString() : "未知");
-                            sender.setCountry(messageObj.has("country") ? messageObj.get("country").getAsString() : "未知");
+                            // 创建发送者信息
+                            Sender sender = new Sender();
                             
-                            // 设置头像框和称号
-                            if (userObj.has("avatarFramerUrl")) {
-                                sender.setAvatarFramerUrl(userObj.get("avatarFramerUrl").getAsString());
+                            // 解析用户信息
+                            JsonObject userObj = null;
+                            if (messageObj.has("user") && !messageObj.get("user").isJsonNull()) {
+                                userObj = messageObj.getAsJsonObject("user");
                             }
-                            if (userObj.has("titleId")) {
-                                sender.setTitleId(userObj.get("titleId").getAsString());
+                            
+                            if (userObj != null) {
+                                sender.setId(userObj.get("id").getAsString());
+                                sender.setName(userObj.get("userName").getAsString());
+                                sender.setAvatar(userObj.get("userAvatar").getAsString());
+                                
+                                // 设置用户等级和积分
+                                if (userObj.has("level")) {
+                                    sender.setLevel(userObj.get("level").getAsInt());
+                                }
+                                if (userObj.has("points")) {
+                                    sender.setPoints(userObj.get("points").getAsInt());
+                                }
+                                
+                                // 设置用户角色
+                                if (userObj.has("userRole")) {
+                                    sender.setAdmin("admin".equals(userObj.get("userRole").getAsString()));
+                                }
+                                
+                                // 设置用户地区
+                                sender.setRegion(messageObj.has("region") ? messageObj.get("region").getAsString() : "未知");
+                                sender.setCountry(messageObj.has("country") ? messageObj.get("country").getAsString() : "未知");
+                                
+                                // 设置头像框和称号
+                                if (userObj.has("avatarFramerUrl")) {
+                                    sender.setAvatarFramerUrl(userObj.get("avatarFramerUrl").getAsString());
+                                }
+                                if (userObj.has("titleId")) {
+                                    sender.setTitleId(userObj.get("titleId").getAsString());
+                                }
+                                
+                                chatMessage.setSender(sender);
+                                messages.add(chatMessage);
+                                LOG.info("成功解析旧格式消息: " + chatMessage.getId() + " - " + chatMessage.getSender().getName());
+                            } else {
+                                LOG.warn("消息没有用户信息，跳过");
                             }
                         }
-                        
-                        chatMessage.setSender(sender);
-                        messages.add(chatMessage);
                     } catch (Exception e) {
                         LOG.warn("解析历史消息失败: " + e.getMessage(), e);
+                        e.printStackTrace();
                     }
                 }
+            } else {
+                LOG.warn("响应中没有records数组或格式不正确");
             }
+        } else {
+            LOG.warn("响应码不正确或没有data字段: " + responseBody);
+            throw new Exception("获取历史消息失败: " + (jsonResponse.has("message") ? jsonResponse.get("message").getAsString() : "未知错误"));
         }
         
+        LOG.info("历史消息获取完成，共 " + messages.size() + " 条消息");
         return messages;
     }
     

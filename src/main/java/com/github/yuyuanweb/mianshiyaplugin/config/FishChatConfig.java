@@ -37,27 +37,27 @@ public class FishChatConfig {
      * 是否显示头像
      */
     public boolean isShowAvatar() {
-        return propertiesComponent.getBoolean(SHOW_AVATAR_KEY, true);
+        return Boolean.parseBoolean(propertiesComponent.getValue(SHOW_AVATAR_KEY, String.valueOf(true)));
     }
     
     /**
      * 设置是否显示头像
      */
     public void setShowAvatar(boolean showAvatar) {
-        propertiesComponent.setValue(SHOW_AVATAR_KEY, showAvatar);
+        propertiesComponent.setValue(SHOW_AVATAR_KEY, String.valueOf(showAvatar), String.valueOf(true));
     }
     
     /**
      * 是否显示图片
      */
     public boolean isShowImages() {
-        return propertiesComponent.getBoolean(SHOW_IMAGES_KEY, true);
+        return Boolean.parseBoolean(propertiesComponent.getValue(SHOW_IMAGES_KEY, String.valueOf(true)));
     }
     
     /**
      * 设置是否显示图片
      */
     public void setShowImages(boolean showImages) {
-        propertiesComponent.setValue(SHOW_IMAGES_KEY, showImages);
+        propertiesComponent.setValue(SHOW_IMAGES_KEY, String.valueOf(showImages), String.valueOf(true));
     }
 } 
