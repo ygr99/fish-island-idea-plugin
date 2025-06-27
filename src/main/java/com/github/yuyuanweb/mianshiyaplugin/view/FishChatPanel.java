@@ -606,23 +606,107 @@ public class FishChatPanel extends JBPanel<FishChatPanel> implements Disposable 
         
         // 如果配置允许显示头像
         if (showAvatar) {
-            // 使用简单的文字头像，不加载图片
-            JLabel avatarLabel = new JLabel(username.substring(0, 1).toUpperCase());
-                avatarLabel.setPreferredSize(new Dimension(24, 24));
+            // 使用自定义圆形头像组件
+            CircleAvatarLabel avatarLabel = new CircleAvatarLabel();
+            avatarPanel.add(avatarLabel);
+            
+            // 尝试加载头像
+            if (avatar != null && !avatar.isEmpty()) {
+                // 先设置一个默认的文字头像作为加载状态
+                avatarLabel.setText("⌛");
+                avatarLabel.setHorizontalAlignment(SwingConstants.CENTER);
+                avatarLabel.setBackground(new Color(120, 120, 120));
+                avatarLabel.setForeground(Color.WHITE);
+                
+                try {
+                    // 异步加载头像
+                    new Thread(() -> {
+                        try {
+                            URL url = new URL(avatar);
+                            // 使用ImageIO直接从URL加载图像
+                            // 注意：ImageIO.read()不支持GIF动画，但可以读取第一帧
+                            BufferedImage bufferedImage = ImageIO.read(url);
+                            
+                            if (bufferedImage != null) {
+                                // 如果成功读取了图像，创建ImageIcon
+                                ImageIcon originalIcon = new ImageIcon(bufferedImage);
+                                
+                                SwingUtilities.invokeLater(() -> {
+                                    // 设置原始图标到自定义标签
+                                    avatarLabel.setText(null); // 清除文字
+                                    avatarLabel.setOriginalIcon(originalIcon);
+                                    // 仅在头像加载完成后更新UI，避免频繁刷新
+                                    updateUILater();
+                                });
+                            } else {
+                                // ImageIO无法读取图像，尝试使用Toolkit方法
+                                final Image image = Toolkit.getDefaultToolkit().createImage(url);
+                                MediaTracker tracker = new MediaTracker(avatarLabel);
+                                tracker.addImage(image, 0);
+                                try {
+                                    tracker.waitForID(0, 2000); // 等待最多2秒
+                                } catch (InterruptedException ignored) {}
+                                
+                                if (!tracker.isErrorAny()) {
+                                    // 创建静态图像
+                                    BufferedImage staticImg = new BufferedImage(
+                                        Math.max(1, image.getWidth(null)), 
+                                        Math.max(1, image.getHeight(null)), 
+                                        BufferedImage.TYPE_INT_ARGB);
+                                    Graphics2D g2d = staticImg.createGraphics();
+                                    g2d.drawImage(image, 0, 0, null);
+                                    g2d.dispose();
+                                    
+                                    ImageIcon originalIcon = new ImageIcon(staticImg);
+                                    
+                                    SwingUtilities.invokeLater(() -> {
+                                        // 设置原始图标到自定义标签
+                                        avatarLabel.setText(null); // 清除文字
+                                        avatarLabel.setOriginalIcon(originalIcon);
+                                        // 仅在头像加载完成后更新UI，避免频繁刷新
+                                        updateUILater();
+                                    });
+                                } else {
+                                    throw new Exception("无法加载图像");
+                                }
+                            }
+                        } catch (Exception e) {
+                            // 头像加载失败，使用默认文字头像
+                            SwingUtilities.invokeLater(() -> {
+                                avatarLabel.setText(username.substring(0, 1).toUpperCase());
+                                avatarLabel.setHorizontalAlignment(SwingConstants.CENTER);
+                                avatarLabel.setBackground(new Color(100, 149, 237));
+                                avatarLabel.setForeground(Color.WHITE);
+                                // 不需要设置setOpaque(true)，CircleAvatarLabel会处理绘制
+                                // 仅在头像设置完成后更新UI
+                                updateUILater();
+                            });
+                        }
+                    }).start();
+                } catch (Exception e) {
+                    // 头像加载失败，使用默认文字头像
+                    avatarLabel.setText(username.substring(0, 1).toUpperCase());
+                    avatarLabel.setHorizontalAlignment(SwingConstants.CENTER);
+                    avatarLabel.setBackground(new Color(100, 149, 237));
+                    avatarLabel.setForeground(Color.WHITE);
+                    // 不需要设置setOpaque(true)，CircleAvatarLabel会处理绘制
+                }
+            } else {
+                // 没有头像URL，显示首字母
+                avatarLabel.setText(username.substring(0, 1).toUpperCase());
                 avatarLabel.setHorizontalAlignment(SwingConstants.CENTER);
                 avatarLabel.setBackground(new Color(100, 149, 237));
                 avatarLabel.setForeground(Color.WHITE);
-                avatarLabel.setOpaque(true);
-                
-                avatarPanel.add(avatarLabel);
-            } else {
-                // 如果不显示头像，添加一个空白占位符以保持布局一致
-                JLabel spacerLabel = new JLabel(" ");
-                spacerLabel.setPreferredSize(new Dimension(5, 24));
-                avatarPanel.add(spacerLabel);
+                // 不需要设置setOpaque(true)，CircleAvatarLabel会处理绘制
             }
-            
-            userInfoPanel.add(avatarPanel, BorderLayout.WEST);
+        } else {
+            // 如果不显示头像，添加一个空白占位符以保持布局一致
+            JLabel spacerLabel = new JLabel(" ");
+            spacerLabel.setPreferredSize(new Dimension(5, 24));
+            avatarPanel.add(spacerLabel);
+        }
+        
+        userInfoPanel.add(avatarPanel, BorderLayout.WEST);
         
                     // 用户名 - 不显示管理员标记，使用更隐蔽的颜色
             String displayName = username;  // 不再添加[管理员]前缀
@@ -1170,31 +1254,31 @@ public class FishChatPanel extends JBPanel<FishChatPanel> implements Disposable 
         }
         
         userInfoPanel.add(avatarPanel, BorderLayout.WEST);
-            
+        
                     // 用户名 - 不显示管理员标记，使用更隐蔽的颜色
-        String displayName = username;  // 不再添加[管理员]前缀
-        JLabel nameLabel = new JLabel(displayName);
-        // 使用更隐蔽的颜色，避免红色等醒目颜色
-        nameLabel.setForeground(isAdmin ? new Color(70, 110, 126) : new Color(90, 120, 140));
-        nameLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 5));
-        nameLabel.setFont(nameLabel.getFont().deriveFont(Font.BOLD));
-            nameTimePanel.add(nameLabel);
-            
-            // 时间标签
-            JLabel timeLabel = new JLabel(time);
-            timeLabel.setForeground(new Color(150, 150, 150));
-            timeLabel.setHorizontalAlignment(SwingConstants.LEFT);
-            timeLabel.setFont(timeLabel.getFont().deriveFont(10.0f));
-            nameTimePanel.add(timeLabel);
-            
-            userInfoPanel.add(nameTimePanel, BorderLayout.CENTER);
-            
-            // 消息内容
-            JPanel contentPanel = new JPanel(new BorderLayout());
-            contentPanel.setOpaque(false);
-            contentPanel.setBorder(BorderFactory.createEmptyBorder(2, 3, 5, 5));
-            
-                    // 提取消息中的图片URL
+            String displayName = username;  // 不再添加[管理员]前缀
+            JLabel nameLabel = new JLabel(displayName);
+            // 使用更隐蔽的颜色，避免红色等醒目颜色
+            nameLabel.setForeground(isAdmin ? new Color(70, 110, 126) : new Color(90, 120, 140));
+            nameLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 5));
+            nameLabel.setFont(nameLabel.getFont().deriveFont(Font.BOLD));
+        nameTimePanel.add(nameLabel);
+        
+        // 时间标签
+        JLabel timeLabel = new JLabel(time);
+        timeLabel.setForeground(new Color(150, 150, 150));
+        timeLabel.setHorizontalAlignment(SwingConstants.LEFT);
+        timeLabel.setFont(timeLabel.getFont().deriveFont(10.0f));
+        nameTimePanel.add(timeLabel);
+        
+        userInfoPanel.add(nameTimePanel, BorderLayout.CENTER);
+        
+        // 消息内容
+        JPanel contentPanel = new JPanel(new BorderLayout());
+        contentPanel.setOpaque(false);
+        contentPanel.setBorder(BorderFactory.createEmptyBorder(2, 3, 5, 5));
+        
+        // 提取消息中的图片URL
         List<String> imageUrls = new ArrayList<>();
         if (message.contains("[img]")) {
             Pattern pattern = Pattern.compile("\\[img\\]([^\\[]+)\\[\\/img\\]");
@@ -1295,22 +1379,22 @@ public class FishChatPanel extends JBPanel<FishChatPanel> implements Disposable 
         }
         
         contentPanel.add(messageContentPanel, BorderLayout.CENTER);
-            
-            // 添加组件到消息卡片
-            messageCard.add(userInfoPanel, BorderLayout.NORTH);
-            messageCard.add(contentPanel, BorderLayout.CENTER);
-            
-            // 添加到消息面板
-            chatMessagesPanel.add(messageCard);
-            chatMessagesPanel.add(Box.createVerticalStrut(8)); // 添加间距
+        
+        // 添加组件到消息卡片
+        messageCard.add(userInfoPanel, BorderLayout.NORTH);
+        messageCard.add(contentPanel, BorderLayout.CENTER);
+        
+        // 添加到消息面板
+        chatMessagesPanel.add(messageCard);
+        chatMessagesPanel.add(Box.createVerticalStrut(8)); // 添加间距
 
-            // 不在这里调用revalidate和repaint，改用批量更新UI的方法
-            updateUILater();
-            
-            // 记录日志
-            LOG.info("添加消息卡片: " + username + " - " + (message.length() > 20 ? message.substring(0, 20) + "..." : message));
-        });
-    }
+        // 不在这里调用revalidate和repaint，改用批量更新UI的方法
+        updateUILater();
+        
+        // 记录日志
+        LOG.info("添加消息卡片: " + username + " - " + (message.length() > 20 ? message.substring(0, 20) + "..." : message));
+    });
+}
     
     // 添加消息计数器，用于批量更新
     private int pendingMessageCount = 0;

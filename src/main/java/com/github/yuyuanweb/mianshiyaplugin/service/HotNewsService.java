@@ -16,8 +16,7 @@ import java.util.Map;
 import java.util.LinkedHashMap;
 
 public class HotNewsService {
-    private static final String API_URL = "https://moyuapi.codebug.icu/fish/api/hot/list";
-    private static final String TOKEN = "Re_9NUm4SkQIt2EHJ_l5u8SZcstzfRVNo5__";
+    private static final String API_URL = "https://api.yucoder.cn/api/hot/list";
     private final HttpClient httpClient;
     private final Gson gson;
 
@@ -30,7 +29,6 @@ public class HotNewsService {
         try {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(API_URL))
-                    .header("fish-dog-token", TOKEN)
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.noBody())
                     .build();
